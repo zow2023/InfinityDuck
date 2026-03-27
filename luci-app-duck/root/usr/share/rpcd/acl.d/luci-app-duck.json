@@ -9,10 +9,12 @@
 				"/etc/init.d/duck status": [ "exec" ],
 				"/etc/init.d/duck hot_reload": [ "exec" ],
 				"/etc/init.d/duck restart": [ "exec" ],
-				"/bin/chmod 0600 /etc/duck/config.dae": [ "exec" ]
+				"/bin/chmod 0600 /etc/duck/config.dae": [ "exec" ],
+				"/usr/sbin/dae": [ "exec" ]
 			},
 			"ubus": {
-				"service": [ "list" ]
+				"service": [ "list" ],
+				"system": [ "info" ]
 			},
 			"uci": [ "duck" ]
 		},

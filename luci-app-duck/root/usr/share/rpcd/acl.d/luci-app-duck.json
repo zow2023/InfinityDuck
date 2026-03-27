@@ -10,7 +10,7 @@
 				"/etc/init.d/duck hot_reload": [ "exec" ],
 				"/etc/init.d/duck restart": [ "exec" ],
 				"/bin/chmod 0600 /etc/duck/config.dae": [ "exec" ],
-				"/usr/sbin/dae": [ "exec" ]
+				"/usr/bin/dae": [ "exec" ]
 			},
 			"ubus": {
 				"service": [ "list" ],

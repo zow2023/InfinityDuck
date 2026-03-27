@@ -59,7 +59,7 @@ return view.extend({
 		return Promise.all([
 			uci.load('duck'),
 			L.resolveDefault(callSystemInfo(), {}),
-			L.resolveDefault(callDaeVersion('/usr/sbin/dae', ['version']), {})
+			L.resolveDefault(callDaeVersion('/usr/bin/dae', ['version']), {})
 		]);
 	},
 

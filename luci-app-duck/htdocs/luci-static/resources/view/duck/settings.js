@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-
 'use strict';
 'require form';
 'require poll';
@@ -11,6 +10,19 @@ var callServiceList = rpc.declare({
 	object: 'service',
 	method: 'list',
 	params: ['name'],
+	expect: { '': {} }
+});
+
+var callSystemInfo = rpc.declare({
+	object: 'system',
+	method: 'info',
+	expect: { '': {} }
+});
+
+var callDaeVersion = rpc.declare({
+	object: 'file',
+	method: 'exec',
+	params: ['command', 'params'],
 	expect: { '': {} }
 });
 
@@ -32,19 +44,40 @@ function renderStatus(isRunning) {
 	} else {
 		renderHTML = spanTemp.format('red', _('InfinityDuck'), _('NOT RUNNING'));
 	}
-
 	return renderHTML;
+}
+
+function formatMemory(bytes) {
+	if (bytes == null || isNaN(bytes)) return _('N/A');
+	if (bytes >= 1073741824)
+		return '%.2f GB'.format(bytes / 1073741824);
+	return '%.1f MB'.format(bytes / 1048576);
 }
 
 return view.extend({
 	load: function () {
 		return Promise.all([
-			uci.load('duck')
+			uci.load('duck'),
+			L.resolveDefault(callSystemInfo(), {}),
+			L.resolveDefault(callDaeVersion('/usr/sbin/dae', ['version']), {})
 		]);
 	},
 
 	render: function (data) {
 		var m, s, o;
+
+		var memInfo    = data[1] || {};
+		var daeExecRes = data[2] || {};
+
+		var memTotal = memInfo.memory ? memInfo.memory.total     : null;
+		var memFree  = memInfo.memory ? memInfo.memory.available : null;
+		var memUsed  = (memTotal != null && memFree != null) ? (memTotal - memFree) : null;
+
+		var daeVersion = _('N/A');
+		if (daeExecRes.stdout) {
+			var match = daeExecRes.stdout.match(/dae\s+(v[\d.]+\S*)/);
+			daeVersion = match ? match[1] : daeExecRes.stdout.trim().split('\n')[0];
+		}
 
 		m = new form.Map('duck', _('InfinityDuck'),
 			_('eBPF-based Linux high-performance transparent proxy solution.'));
@@ -58,24 +91,47 @@ return view.extend({
 					view.innerHTML = renderStatus(res);
 				});
 			});
-
 			return E('div', { class: 'cbi-section', id: 'status_bar' }, [
 				E('p', { id: 'service_status' }, _('Collecting data…'))
 			]);
-		}
+		};
+
+		s = m.section(form.TypedSection);
+		s.anonymous = true;
+		s.render = function () {
+			return E('div', { class: 'cbi-section' }, [
+				E('h3', {}, _('System Info')),
+				E('table', { class: 'table' }, [
+					E('tr', { class: 'tr' }, [
+						E('td', { class: 'td left', style: 'width:30%' },
+							E('strong', {}, _('Memory Usage'))),
+						E('td', { class: 'td left' },
+							'%s / %s'.format(
+								formatMemory(memUsed),
+								formatMemory(memTotal)
+							)
+						)
+					]),
+					E('tr', { class: 'tr' }, [
+						E('td', { class: 'td left', style: 'width:30%' },
+							E('strong', {}, _('DAE Version'))),
+						E('td', { class: 'td left' }, daeVersion)
+					])
+				])
+			]);
+		};
 
 		s = m.section(form.NamedSection, 'config', 'duck');
-
 		o = s.option(form.Flag, 'enabled', _('Enable'));
-		
+
 		o = s.option(form.Flag, 'scheduled_restart', _('Scheduled Restart'));
 		o.rmempty = false;
-		
+
 		o = s.option(form.Value, 'cron_expression', _('Cron Expression'));
 		o.depends('scheduled_restart', '1');
 		o.placeholder = '0 4 * * *';
 		o.rmempty = true;
-		
+
 		o = s.option(form.Value, 'delay', _('Startup Delay'),
 			_('Startup delay in seconds.'));
 		o.datatype = 'uinteger';
@@ -86,10 +142,10 @@ return view.extend({
 		o.default = '/etc/duck/config.dae';
 		o.rmempty = false;
 		o.readonly = true;
-		
+
 		o = s.option(form.Flag, 'subscribe_enabled', _('Enable Subscription Download'));
 		o.rmempty = false;
-		
+
 		o = s.option(form.Value, 'subscribe_url', _('Subscription URL'),
 			_('The URL to download configuration from when starting/restarting. Will use existing config if download fails.'));
 		o.depends('subscribe_enabled', '1');

@@ -218,3 +218,7 @@ msgstr "未知错误：%s"
 #: applications/luci-app-duck/htdocs/luci-static/resources/view/duck/settings.js:50
 msgid "eBPF-based Linux high-performance transparent proxy solution."
 msgstr "基于 eBPF 的 Linux 高性能透明代理解决方案。"
+
+#: applications/luci-app-duck/htdocs/luci-static/resources/view/duck/settings.js:31
+msgid "Memory Usage"
+msgstr "内存占用"

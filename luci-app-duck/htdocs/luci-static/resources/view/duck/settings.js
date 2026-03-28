@@ -82,6 +82,7 @@ return view.extend({
 					L.resolveDefault(getMemoryUsage())
 				]).then(function (results) {
 					var view = document.getElementById('service_status');
+					if (view)
 					view.innerHTML = renderStatus(results[0], results[1]);
 				});
 			});

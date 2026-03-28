@@ -30,10 +30,27 @@ function getServiceStatus() {
 	});
 }
 
+// 缓存 PID，避免每次 poll 都重复读 pid 文件
+var cachedPid = null;
+
 function getMemoryUsage() {
+	// 有缓存 PID 时，直接读 status，只需一次 RPC
+	if (cachedPid) {
+		return L.resolveDefault(callFileRead('/proc/' + cachedPid + '/status'), '').then(function (status) {
+			var match = (status || '').match(/VmRSS:\s+(\d+)\s+kB/);
+			if (!match) {
+				// PID 已失效（服务重启），清除缓存下次重新读
+				cachedPid = null;
+				return '';
+			}
+			return (parseInt(match[1]) / 1024).toFixed(1) + ' MB';
+		});
+	}
+	// 无缓存时，先读 pid 文件
 	return L.resolveDefault(callFileRead('/var/run/dae.pid'), '').then(function (pid) {
 		pid = (pid || '').trim();
 		if (!pid) return '';
+		cachedPid = pid;
 		return L.resolveDefault(callFileRead('/proc/' + pid + '/status'), '').then(function (status) {
 			var match = (status || '').match(/VmRSS:\s+(\d+)\s+kB/);
 			return match ? (parseInt(match[1]) / 1024).toFixed(1) + ' MB' : '';
@@ -60,6 +77,18 @@ function renderStatus(isRunning, memory) {
 	return renderHTML;
 }
 
+// 抽取为独立函数，供立即执行和 poll 共用
+function updateStatus() {
+	return Promise.all([
+		L.resolveDefault(getServiceStatus()),
+		L.resolveDefault(getMemoryUsage())
+	]).then(function (results) {
+		var el = document.getElementById('service_status');
+		if (el)
+			el.innerHTML = renderStatus(results[0], results[1]);
+	});
+}
+
 return view.extend({
 	load: function () {
 		return Promise.all([
@@ -76,16 +105,10 @@ return view.extend({
 		s = m.section(form.TypedSection);
 		s.anonymous = true;
 		s.render = function () {
-			poll.add(function () {
-				return Promise.all([
-					L.resolveDefault(getServiceStatus()),
-					L.resolveDefault(getMemoryUsage())
-				]).then(function (results) {
-					var view = document.getElementById('service_status');
-					if (view)
-					view.innerHTML = renderStatus(results[0], results[1]);
-				});
-			});
+			// 立即执行一次，不等 poll 第一个周期
+			updateStatus();
+			// 之后每 5 秒轮询
+			poll.add(updateStatus, 5);
 
 			return E('div', { class: 'cbi-section', id: 'status_bar' }, [
 				E('p', { id: 'service_status' }, _('Collecting data…'))

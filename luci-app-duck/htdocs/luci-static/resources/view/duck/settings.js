@@ -5,138 +5,140 @@
 'require rpc';
 'require uci';
 'require view';
-'require fs';
-'require ui';
 
 var callServiceList = rpc.declare({
-    object: 'service',
-    method: 'list',
-    params: ['name'],
-    expect: { '': {} }
+	object: 'service',
+	method: 'list',
+	params: ['name'],
+	expect: { '': {} }
 });
 
-var callProcessExec = rpc.declare({
-    object: 'file',
-    method: 'exec',
-    params: ['command', 'params'],
-    expect: { '': {} }
+// ── 新增：通过 file.exec 读取 dae 进程的 VmRSS（实际物理内存） ──
+var callGetMemory = rpc.declare({
+	object: 'file',
+	method: 'exec',
+	params: ['command', 'args'],
+	expect: { stdout: '' }
 });
 
 function getServiceStatus() {
-    return L.resolveDefault(callServiceList('duck'), {}).then(function (res) {
-        var isRunning = false;
-        try {
-            isRunning = res['duck']['instances']['duck']['running'];
-        } catch (e) { }
-        return isRunning;
-    });
+	return L.resolveDefault(callServiceList('duck'), {}).then(function (res) {
+		var isRunning = false;
+		try {
+			isRunning = res['duck']['instances']['duck']['running'];
+		} catch (e) { }
+		return isRunning;
+	});
 }
 
-function getDaeMemory() {
-    // 执行 ps 获取 dae 进程的 RSS 内存 (KB)
-    return L.resolveDefault(callProcessExec('/bin/sh', ['-c', "ps -w | grep '[d]ae' | awk '{print $4}'"]), {}).then(function (res) {
-        var kb = parseInt(res.stdout);
-        return isNaN(kb) ? 0 : kb * 1024;
-    });
+// ── 新增：获取 dae 进程内存占用，返回格式如 "12.3 MB" ──
+function getMemoryUsage() {
+	return L.resolveDefault(
+		callGetMemory('/bin/sh', [
+			'-c',
+			"pid=$(pgrep -f '/usr/bin/dae' | head -1); " +
+			"[ -n \"$pid\" ] && " +
+			"awk '/VmRSS/{printf \"%.1f MB\", $2/1024}' /proc/$pid/status 2>/dev/null || true"
+		]),
+		''
+	).then(function (res) {
+		return (res || '').trim();
+	});
 }
 
-// 格式化：状态 + 内存同行显示
-function renderStatus(isRunning, memBytes) {
-    if (isRunning) {
-        var memStr = formatMemory(memBytes);
-        return '<em><b style="color:green">DAE %s</b></em> <span style="color:#666; font-size:0.9em;">(%s: %s)</span>'
-            .format(_('RUNNING'), _('Memory Usage'), memStr);
-    } else {
-        return '<em><b style="color:red">DAE %s</b></em>'.format(_('NOT RUNNING'));
-    }
-}
-
-function formatMemory(bytes) {
-    if (!bytes || isNaN(bytes) || bytes <= 0) return '0 MB';
-    if (bytes >= 1073741824) return '%.2f GB'.format(bytes / 1073741824);
-    return '%.1f MB'.format(bytes / 1048576);
+// ── 修改：renderStatus 新增 memory 参数，格式对齐 DAE 样式 ──
+function renderStatus(isRunning, memory) {
+	var renderHTML;
+	if (isRunning) {
+		renderHTML = '<em style="color:green"><b>' +
+			_('InfinityDuck') + ' ' + _('RUNNING') +
+			'</b></em>';
+		if (memory) {
+			renderHTML += ' <span style="color:#666; font-size:0.9em;">(' +
+				_('Memory Usage') + ': ' + memory +
+				')</span>';
+		}
+	} else {
+		renderHTML = '<em style="color:red"><b>' +
+			_('InfinityDuck') + ' ' + _('NOT RUNNING') +
+			'</b></em>';
+	}
+	return renderHTML;
 }
 
 return view.extend({
-    load: function () {
-        return Promise.all([
-            uci.load('duck'),
-            // 获取版本号逻辑保留
-            L.resolveDefault(fs.exec('/usr/bin/dae', ['version']), {})
-        ]);
-    },
+	load: function () {
+		return Promise.all([
+			uci.load('duck')
+		]);
+	},
 
-    render: function (data) {
-        var m, s, o;
-        var daeExecRes = data[1] || {};
+	render: function (data) {
+		var m, s, o;
 
-        // 1. 解析版本号字符串
-        var daeVersion = _('N/A');
-        if (daeExecRes.stdout) {
-            var match = daeExecRes.stdout.match(/v[\d.]+\S*/);
-            daeVersion = match ? match[0] : daeExecRes.stdout.trim().split('\n')[0];
-        }
+		m = new form.Map('duck', _('InfinityDuck'),
+			_('eBPF-based Linux high-performance transparent proxy solution.'));
 
-        // 2. 检查重载成功提示
-        var urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('reload')) {
-            ui.addNotification(null, E('p', _('Service reloaded successfully')), 'success');
-            history.replaceState({}, document.title, window.location.pathname);
-        }
+		s = m.section(form.TypedSection);
+		s.anonymous = true;
+		s.render = function () {
+			poll.add(function () {
+				// ── 修改：并发拉取运行状态 + 内存占用 ──
+				return Promise.all([
+					L.resolveDefault(getServiceStatus()),
+					L.resolveDefault(getMemoryUsage())
+				]).then(function (results) {
+					var view = document.getElementById('service_status');
+					view.innerHTML = renderStatus(results[0], results[1]);
+				});
+			});
 
-        m = new form.Map('duck', _('InfinityDuck'),
-            _('eBPF-based Linux high-performance transparent proxy solution.'));
+			return E('div', { class: 'cbi-section', id: 'status_bar' }, [
+				E('p', { id: 'service_status' }, _('Collecting data…'))
+			]);
+		};
 
-        // --- 第一部分：状态栏（包含即时内存） ---
-        s = m.section(form.TypedSection);
-        s.anonymous = true;
-        s.render = function () {
-            poll.add(function () {
-                return Promise.all([getServiceStatus(), getDaeMemory()]).then(function (results) {
-                    var view = document.getElementById('dae_status_html');
-                    if (view) view.innerHTML = renderStatus(results[0], results[1]);
-                });
-            });
+		s = m.section(form.NamedSection, 'config', 'duck');
 
-            return E('div', { class: 'cbi-section' }, [
-                E('p', { id: 'dae_status_html' }, E('em', E('b', _('Collecting data...'))))
-            ]);
-        };
+		o = s.option(form.Flag, 'enabled', _('Enable'));
 
-        // --- 第二部分：系统信息（保留版本号显示） ---
-        s = m.section(form.TypedSection);
-        s.anonymous = true;
-        s.render = function () {
-            return E('div', { class: 'cbi-section' }, [
-                E('table', { class: 'table' }, [
-                    E('tr', { class: 'tr' }, [
-                        E('td', { class: 'td left', style: 'width:30%' }, E('strong', {}, _('DAE Version'))),
-                        E('td', { class: 'td left' }, daeVersion)
-                    ])
-                ])
-            ]);
-        };
+		o = s.option(form.Flag, 'scheduled_restart', _('Scheduled Restart'));
+		o.rmempty = false;
 
-        // --- 第三部分：常规配置表单 ---
-        s = m.section(form.NamedSection, 'config', 'duck');
-        o = s.option(form.Flag, 'enabled', _('Enable'));
-        
-        o = s.option(form.Flag, 'scheduled_restart', _('Scheduled Restart'));
-        o.rmempty = false;
+		o = s.option(form.Value, 'cron_expression', _('Cron Expression'));
+		o.depends('scheduled_restart', '1');
+		o.placeholder = '0 4 * * *';
+		o.rmempty = true;
 
-        o = s.option(form.Value, 'cron_expression', _('Cron Expression'));
-        o.depends('scheduled_restart', '1');
-        o.placeholder = '0 4 * * *';
+		o = s.option(form.Value, 'delay', _('Startup Delay'),
+			_('Startup delay in seconds.'));
+		o.datatype = 'uinteger';
+		o.placeholder = '0';
+		o.default = '0';
 
-        o = s.option(form.Value, 'config_file', _('Configration file'));
-        o.default = '/etc/duck/config.dae';
-        o.readonly = true;
+		o = s.option(form.Value, 'config_file', _('Configration file'));
+		o.default = '/etc/duck/config.dae';
+		o.rmempty = false;
+		o.readonly = true;
 
-        o = s.option(form.Flag, 'subscribe_enabled', _('Enable Subscription Download'));
-        
-        o = s.option(form.Value, 'subscribe_url', _('Subscription URL'));
-        o.depends('subscribe_enabled', '1');
+		o = s.option(form.Flag, 'subscribe_enabled', _('Enable Subscription Download'));
+		o.rmempty = false;
 
-        return m.render();
-    }
+		o = s.option(form.Value, 'subscribe_url', _('Subscription URL'),
+			_('The URL to download configuration from when starting/restarting. Will use existing config if download fails.'));
+		o.depends('subscribe_enabled', '1');
+		o.rmempty = true;
+
+		o = s.option(form.Value, 'log_maxbackups', _('Max log backups'),
+			_('The maximum number of old log files to retain.'));
+		o.datatype = 'uinteger';
+		o.placeholder = '1';
+
+		o = s.option(form.Value, 'log_maxsize', _('Max log size'),
+			_('The maximum size in megabytes of the log file before it gets rotated.'));
+		o.datatype = 'uinteger';
+		o.placeholder = '1';
+
+		return m.render();
+	}
 });

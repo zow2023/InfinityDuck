@@ -13,12 +13,11 @@ var callServiceList = rpc.declare({
 	expect: { '': {} }
 });
 
-// ── 新增：通过 file.exec 读取 dae 进程的 VmRSS（实际物理内存） ──
-var callGetMemory = rpc.declare({
+var callFileRead = rpc.declare({
 	object: 'file',
-	method: 'exec',
-	params: ['command', 'args'],
-	expect: { stdout: '' }
+	method: 'read',
+	params: ['path'],
+	expect: { data: '' }
 });
 
 function getServiceStatus() {
@@ -31,22 +30,17 @@ function getServiceStatus() {
 	});
 }
 
-// ── 新增：获取 dae 进程内存占用，返回格式如 "12.3 MB" ──
 function getMemoryUsage() {
-	return L.resolveDefault(
-		callGetMemory('/bin/sh', [
-			'-c',
-			"pid=$(pgrep -f '/usr/bin/dae' | head -1); " +
-			"[ -n \"$pid\" ] && " +
-			"awk '/VmRSS/{printf \"%.1f MB\", $2/1024}' /proc/$pid/status 2>/dev/null || true"
-		]),
-		''
-	).then(function (res) {
-		return (res || '').trim();
+	return L.resolveDefault(callFileRead('/var/run/dae.pid'), '').then(function (pid) {
+		pid = (pid || '').trim();
+		if (!pid) return '';
+		return L.resolveDefault(callFileRead('/proc/' + pid + '/status'), '').then(function (status) {
+			var match = (status || '').match(/VmRSS:\s+(\d+)\s+kB/);
+			return match ? (parseInt(match[1]) / 1024).toFixed(1) + ' MB' : '';
+		});
 	});
 }
 
-// ── 修改：renderStatus 新增 memory 参数，格式对齐 DAE 样式 ──
 function renderStatus(isRunning, memory) {
 	var renderHTML;
 	if (isRunning) {
@@ -83,7 +77,6 @@ return view.extend({
 		s.anonymous = true;
 		s.render = function () {
 			poll.add(function () {
-				// ── 修改：并发拉取运行状态 + 内存占用 ──
 				return Promise.all([
 					L.resolveDefault(getServiceStatus()),
 					L.resolveDefault(getMemoryUsage())

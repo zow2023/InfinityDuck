@@ -6,6 +6,7 @@
 'require uci';
 'require view';
 'require fs';
+'require ui';
 
 var callServiceList = rpc.declare({
     object: 'service',
@@ -14,7 +15,6 @@ var callServiceList = rpc.declare({
     expect: { '': {} }
 });
 
-// 定义用于获取进程内存的 RPC
 var callProcessExec = rpc.declare({
     object: 'file',
     method: 'exec',
@@ -32,25 +32,28 @@ function getServiceStatus() {
     });
 }
 
-// 获取 dae 进程的实时 RSS 内存占用 (KB)
 function getDaeMemory() {
+    // 执行 ps 获取 dae 进程的 RSS 内存 (KB)
     return L.resolveDefault(callProcessExec('/bin/sh', ['-c', "ps -w | grep '[d]ae' | awk '{print $4}'"]), {}).then(function (res) {
         var kb = parseInt(res.stdout);
-        return isNaN(kb) ? 0 : kb * 1024; // 转换为 bytes
+        return isNaN(kb) ? 0 : kb * 1024;
     });
 }
 
-function renderStatus(isRunning) {
-    var spanTemp = '<span style="color:%s"><strong>%s %s</strong></span>';
-    return isRunning 
-        ? spanTemp.format('green', _('InfinityDuck'), _('RUNNING'))
-        : spanTemp.format('red', _('InfinityDuck'), _('NOT RUNNING'));
+// 格式化：状态 + 内存同行显示
+function renderStatus(isRunning, memBytes) {
+    if (isRunning) {
+        var memStr = formatMemory(memBytes);
+        return '<em><b style="color:green">DAE %s</b></em> <span style="color:#666; font-size:0.9em;">(%s: %s)</span>'
+            .format(_('RUNNING'), _('Memory Usage'), memStr);
+    } else {
+        return '<em><b style="color:red">DAE %s</b></em>'.format(_('NOT RUNNING'));
+    }
 }
 
 function formatMemory(bytes) {
-    if (bytes == null || isNaN(bytes) || bytes <= 0) return '0 MB';
-    if (bytes >= 1073741824)
-        return '%.2f GB'.format(bytes / 1073741824);
+    if (!bytes || isNaN(bytes) || bytes <= 0) return '0 MB';
+    if (bytes >= 1073741824) return '%.2f GB'.format(bytes / 1073741824);
     return '%.1f MB'.format(bytes / 1048576);
 }
 
@@ -58,7 +61,7 @@ return view.extend({
     load: function () {
         return Promise.all([
             uci.load('duck'),
-            // 修改路径为 /usr/bin/dae
+            // 获取版本号逻辑保留
             L.resolveDefault(fs.exec('/usr/bin/dae', ['version']), {})
         ]);
     },
@@ -67,43 +70,45 @@ return view.extend({
         var m, s, o;
         var daeExecRes = data[1] || {};
 
-        // 解析版本号
+        // 1. 解析版本号字符串
         var daeVersion = _('N/A');
         if (daeExecRes.stdout) {
             var match = daeExecRes.stdout.match(/v[\d.]+\S*/);
             daeVersion = match ? match[0] : daeExecRes.stdout.trim().split('\n')[0];
         }
 
+        // 2. 检查重载成功提示
+        var urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('reload')) {
+            ui.addNotification(null, E('p', _('Service reloaded successfully')), 'success');
+            history.replaceState({}, document.title, window.location.pathname);
+        }
+
         m = new form.Map('duck', _('InfinityDuck'),
             _('eBPF-based Linux high-performance transparent proxy solution.'));
 
+        // --- 第一部分：状态栏（包含即时内存） ---
         s = m.section(form.TypedSection);
         s.anonymous = true;
         s.render = function () {
-            // 实时轮询：状态和内存占用
             poll.add(function () {
-                return Promise.all([
-                    getServiceStatus(),
-                    getDaeMemory()
-                ]).then(function (results) {
-                    var isRunning = results[0];
-                    var memUsed = results[1];
-                    
-                    var statusView = document.getElementById('service_status');
-                    var memView = document.getElementById('dae_mem');
-                    
-                    if (statusView) statusView.innerHTML = renderStatus(isRunning);
-                    if (memView) memView.innerHTML = isRunning ? formatMemory(memUsed) : '0 MB';
+                return Promise.all([getServiceStatus(), getDaeMemory()]).then(function (results) {
+                    var view = document.getElementById('dae_status_html');
+                    if (view) view.innerHTML = renderStatus(results[0], results[1]);
                 });
             });
 
-            return E('div', { class: 'cbi-section', id: 'status_bar' }, [
-                E('p', { id: 'service_status' }, _('Collecting data…')),
+            return E('div', { class: 'cbi-section' }, [
+                E('p', { id: 'dae_status_html' }, E('em', E('b', _('Collecting data...'))))
+            ]);
+        };
+
+        // --- 第二部分：系统信息（保留版本号显示） ---
+        s = m.section(form.TypedSection);
+        s.anonymous = true;
+        s.render = function () {
+            return E('div', { class: 'cbi-section' }, [
                 E('table', { class: 'table' }, [
-                    E('tr', { class: 'tr' }, [
-                        E('td', { class: 'td left', style: 'width:30%' }, E('strong', {}, _('Memory Usage'))),
-                        E('td', { class: 'td left', id: 'dae_mem' }, '0 MB')
-                    ]),
                     E('tr', { class: 'tr' }, [
                         E('td', { class: 'td left', style: 'width:30%' }, E('strong', {}, _('DAE Version'))),
                         E('td', { class: 'td left' }, daeVersion)
@@ -112,45 +117,25 @@ return view.extend({
             ]);
         };
 
+        // --- 第三部分：常规配置表单 ---
         s = m.section(form.NamedSection, 'config', 'duck');
         o = s.option(form.Flag, 'enabled', _('Enable'));
-
+        
         o = s.option(form.Flag, 'scheduled_restart', _('Scheduled Restart'));
         o.rmempty = false;
 
         o = s.option(form.Value, 'cron_expression', _('Cron Expression'));
         o.depends('scheduled_restart', '1');
         o.placeholder = '0 4 * * *';
-        o.rmempty = true;
-
-        o = s.option(form.Value, 'delay', _('Startup Delay'),
-            _('Startup delay in seconds.'));
-        o.datatype = 'uinteger';
-        o.placeholder = '0';
-        o.default = '0';
 
         o = s.option(form.Value, 'config_file', _('Configration file'));
         o.default = '/etc/duck/config.dae';
-        o.rmempty = false;
         o.readonly = true;
 
         o = s.option(form.Flag, 'subscribe_enabled', _('Enable Subscription Download'));
-        o.rmempty = false;
-
-        o = s.option(form.Value, 'subscribe_url', _('Subscription URL'),
-            _('The URL to download configuration from when starting/restarting. Will use existing config if download fails.'));
+        
+        o = s.option(form.Value, 'subscribe_url', _('Subscription URL'));
         o.depends('subscribe_enabled', '1');
-        o.rmempty = true;
-
-        o = s.option(form.Value, 'log_maxbackups', _('Max log backups'),
-            _('The maximum number of old log files to retain.'));
-        o.datatype = 'uinteger';
-        o.placeholder = '1';
-
-        o = s.option(form.Value, 'log_maxsize', _('Max log size'),
-            _('The maximum size in megabytes of the log file before it gets rotated.'));
-        o.datatype = 'uinteger';
-        o.placeholder = '1';
 
         return m.render();
     }

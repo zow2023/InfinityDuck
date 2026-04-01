@@ -54,14 +54,14 @@ endef
 define Package/duck-geoip
   $(call Package/duck/Default)
   TITLE:=geoip for duck
-  DEPENDS:=+duck +v2ray-geoip
+  DEPENDS:=+duck
   PKGARCH:=all
 endef
 
 define Package/duck-geosite
   $(call Package/duck/Default)
   TITLE:=geosite for duck
-  DEPENDS:=+duck +v2ray-geosite
+  DEPENDS:=+duck
   PKGARCH:=all
 endef
 
@@ -103,6 +103,14 @@ define Build/Compile
 		go generate $(PKG_BUILD_DIR)/trace/trace.go ; \
 		$(call GoPackage/Build/Compile) ; \
 	)
+	( \
+		pushd $(PKG_BUILD_DIR) ; \
+		curl -L https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip.dat \
+			-o geoip.dat --progress-bar ; \
+		curl -L https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat \
+			-o geosite.dat --progress-bar ; \
+		popd ; \
+	)
 endef
 
 define Package/duck/install
@@ -120,12 +128,12 @@ endef
 
 define Package/duck-geoip/install
 	$(INSTALL_DIR) $(1)/usr/share/dae
-	$(LN) ../v2ray/geoip.dat $(1)/usr/share/dae/geoip.dat
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/geoip.dat $(1)/usr/share/dae/geoip.dat
 endef
 
 define Package/duck-geosite/install
 	$(INSTALL_DIR) $(1)/usr/share/dae
-	$(LN) ../v2ray/geosite.dat $(1)/usr/share/dae/geosite.dat
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/geosite.dat $(1)/usr/share/dae/geosite.dat
 endef
 
 $(eval $(call GoBinPackage,duck))

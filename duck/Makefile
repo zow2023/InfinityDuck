@@ -5,13 +5,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=duck
-PKG_VERSION:=2026.04.01
+PKG_VERSION:=2025.09.27
 PKG_RELEASE:=1
 
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://github.com/olicesx/dae.git
-PKG_SOURCE_VERSION:=51eca943c915adb8411619aa93cf5dc30fa664fe
+PKG_SOURCE_URL:=https://github.com/LostAttractor/dae.git
+PKG_SOURCE_VERSION:=5abd651d985309031bf99eafcaf0dcfc1e9551f3
 PKG_MIRROR_HASH:=skip
 
 PKG_LICENSE:=AGPL-3.0-only
@@ -39,7 +38,7 @@ define Package/duck/Default
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=Web Servers/Proxies
-  URL:=https://github.com/olicesx/dae
+  URL:=https://github.com/LostAttractor/dae
 endef
 
 define Package/duck
@@ -54,14 +53,14 @@ endef
 define Package/duck-geoip
   $(call Package/duck/Default)
   TITLE:=geoip for duck
-  DEPENDS:=+duck
+  DEPENDS:=+duck +v2ray-geoip
   PKGARCH:=all
 endef
 
 define Package/duck-geosite
   $(call Package/duck/Default)
   TITLE:=geosite for duck
-  DEPENDS:=+duck
+  DEPENDS:=+duck +v2ray-geosite
   PKGARCH:=all
 endef
 
@@ -103,14 +102,6 @@ define Build/Compile
 		go generate $(PKG_BUILD_DIR)/trace/trace.go ; \
 		$(call GoPackage/Build/Compile) ; \
 	)
-	( \
-		pushd $(PKG_BUILD_DIR) ; \
-		curl -L https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip.dat \
-			-o geoip.dat --progress-bar ; \
-		curl -L https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat \
-			-o geosite.dat --progress-bar ; \
-		popd ; \
-	)
 endef
 
 define Package/duck/install
@@ -128,12 +119,12 @@ endef
 
 define Package/duck-geoip/install
 	$(INSTALL_DIR) $(1)/usr/share/dae
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/geoip.dat $(1)/usr/share/dae/geoip.dat
+	$(LN) ../v2ray/geoip.dat $(1)/usr/share/dae/geoip.dat
 endef
 
 define Package/duck-geosite/install
 	$(INSTALL_DIR) $(1)/usr/share/dae
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/geosite.dat $(1)/usr/share/dae/geosite.dat
+	$(LN) ../v2ray/geosite.dat $(1)/usr/share/dae/geosite.dat
 endef
 
 $(eval $(call GoBinPackage,duck))

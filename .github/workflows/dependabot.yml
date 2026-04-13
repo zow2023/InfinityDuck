@@ -1,4 +1,70 @@
 name: dependabot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update Makefile
+        id: update_makefile
+        run: |
+          latest_commit_info="$(curl -s https://api.github.com/repos/olicesx/dae/commits/optimize/code-quality-fixes)"
+          latest_commit_full="$(echo "$latest_commit_info" | jq -r '.sha')"
+          current_commit_full=$(grep 'PKG_SOURCE_VERSION:=' ./duck/Makefile | cut -d '=' -f 2)
+
+          if [ "$current_commit_full" = "$latest_commit_full" ]; then
+            echo "Upstream is already up-to-date ($current_commit_full)."
+            echo "updated=false" >> "$GITHUB_ENV"
+          else
+            latest_commit="$(echo $latest_commit_full | cut -b 1-7)"
+            latest_core_date="$(echo "$latest_commit_info" \
+              | jq -r '(.commit.committer.date // .commit.author.date)' \
+              | cut -c1-10 \
+              | tr '-' '.')"
+
+            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" ./duck/Makefile
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$latest_core_date/" ./duck/Makefile
+            sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$latest_commit_full/" ./duck/Makefile
+            sed -i "s/^PKG_BUILD_VERSION:=.*/PKG_BUILD_VERSION:=alpha-$latest_commit/" ./duck/Makefile
+            sed -i "s/^PKG_SOURCE_DATE:=.*/PKG_SOURCE_DATE:=$latest_core_date/" ./duck/Makefile
+
+            echo "updated=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Commit file
+        if: env.updated == 'true'
+        run: |
+          git config --global user.email "your@email.com"
+          git config --global user.name "YourName"
+          git add ./duck/Makefile
+          git commit -m "Update $(date +%Y/%m/%d\ %H:%M:%S\ %Z)"
+        continue-on-error: true
+
+      - name: Push changes
+        if: env.updated == 'true'
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
+        continue-on-error: true
+
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 2
+        continue-on-error: truename: dependabot
 on:
   workflow_dispatch:
   schedule:

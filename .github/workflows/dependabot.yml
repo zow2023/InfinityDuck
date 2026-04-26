@@ -17,7 +17,7 @@ jobs:
       - name: Update Makefile
         id: update_makefile
         run: |
-          latest_commit_info="$(curl -s https://api.github.com/repos/olicesx/dae/commits/optimize/code-quality-fixes)"
+          latest_commit_info="$(curl -s https://api.github.com/repos/olicesx/dae/commits/kdae)"
           latest_commit_full="$(echo "$latest_commit_info" | jq -r '.sha')"
           current_commit_full=$(grep 'PKG_SOURCE_VERSION:=' ./duck/Makefile | cut -d '=' -f 2)
 

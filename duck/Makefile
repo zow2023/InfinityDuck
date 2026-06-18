@@ -26,11 +26,11 @@ GO_PKG:=github.com/daeuniverse/dae
 GO_PKG_EXCLUDES:=control/kern/tests
 
 GO_PKG_LDFLAGS:= \
-    -s -w -buildid= \
-    -linkmode external -extldflags '-static -Wl,-s'
+	-s -w -buildid= \
+	-linkmode external -extldflags '-static -Wl,-s'
 GO_PKG_LDFLAGS_X:= \
-    $(GO_PKG)/cmd.Version=$(PKG_VERSION) \
-    $(GO_PKG)/common/consts.MaxMatchSetLen_=1024
+	$(GO_PKG)/cmd.Version=$(PKG_VERSION) \
+	$(GO_PKG)/common/consts.MaxMatchSetLen_=1024
 GO_PKG_TAGS:=trace
 
 PGO_PROFILE:=$(CURDIR)/pprof/default.pgo
@@ -40,11 +40,11 @@ include $(INCLUDE_DIR)/bpf.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
 GO_PKG_BUILD_VARS+= \
-    GOFLAGS="-trimpath -buildvcs=false -pgo=auto"
+	GOFLAGS="-trimpath -buildvcs=false -pgo=auto"
 
 GO_PKG_TARGET_VARS+= \
-    CGO_LDFLAGS="$(TARGET_LDFLAGS) -static -Wl,-s" \
-    GOEXPERIMENT=newinliner,simd
+	CGO_LDFLAGS="$(TARGET_LDFLAGS) -static -Wl,-s" \
+	GOEXPERIMENT=newinliner,simd
 
 define Package/duck/Default
   SECTION:=net
@@ -57,25 +57,25 @@ define Package/duck
   $(call Package/duck/Default)
   TITLE:=A lightweight and high-performance transparent proxy solution
   DEPENDS:=$(GO_ARCH_DEPENDS) \
-    +ca-bundle +kmod-sched-core +kmod-sched-bpf \
-    +kmod-veth +kmod-xdp-sockets-diag \
-    +@KERNEL_XDP_SOCKETS \
-    +DUCK_USE_VMLINUX_BTF:vmlinux-btf
+	+ca-bundle +kmod-sched-core +kmod-sched-bpf \
+	+kmod-veth +kmod-xdp-sockets-diag \
+	+@KERNEL_XDP_SOCKETS \
+	+DUCK_USE_VMLINUX_BTF:vmlinux-btf
 endef
 
 define Package/duck/config
-    choice
-        prompt "BTF source for CO-RE"
-        default DUCK_USE_KERNEL_BTF
-        depends on PACKAGE_duck
+	choice
+		prompt "BTF source for CO-RE"
+		default DUCK_USE_KERNEL_BTF
+		depends on PACKAGE_duck
 
-    config DUCK_USE_KERNEL_BTF
-        bool "Use kernel BTF (integrated)"
-        depends on KERNEL_DEBUG_INFO_BTF
+	config DUCK_USE_KERNEL_BTF
+		bool "Use kernel BTF (integrated)"
+		depends on KERNEL_DEBUG_INFO_BTF
 
-    config DUCK_USE_VMLINUX_BTF
-        bool "Use vmlinux-btf package"
-    endchoice
+	config DUCK_USE_VMLINUX_BTF
+		bool "Use vmlinux-btf package"
+	endchoice
 endef
 
 define Package/duck-geoip
@@ -110,56 +110,56 @@ define Package/duck/conffiles
 endef
 
 DUCK_CFLAGS:= \
-    -O2 -Wall -Werror \
-    -DMAX_MATCH_SET_LEN=1024 \
-    -I$(BPF_HEADERS_DIR)/tools/lib \
-    -I$(BPF_HEADERS_DIR)/arch/$(BPF_KARCH)/include/asm/mach-generic
+	-O2 -Wall -Werror \
+	-DMAX_MATCH_SET_LEN=1024 \
+	-I$(BPF_HEADERS_DIR)/tools/lib \
+	-I$(BPF_HEADERS_DIR)/arch/$(BPF_KARCH)/include/asm/mach-generic
 
 define Build/Prepare
-    $(call Build/Prepare/Default)
-    [ -f "$(PGO_PROFILE)" ] && $(CP) "$(PGO_PROFILE)" "$(PKG_BUILD_DIR)/default.pgo" || true
+	$(call Build/Prepare/Default)
+	[ -f "$(PGO_PROFILE)" ] && $(CP) "$(PGO_PROFILE)" "$(PKG_BUILD_DIR)/default.pgo" || true
 endef
 
 define Build/Compile
-    ( \
-        pushd $(PKG_BUILD_DIR) ; \
-        export \
-        $(GO_GENERAL_BUILD_CONFIG_VARS) \
-        $(GO_PKG_BUILD_CONFIG_VARS) \
-        $(GO_PKG_BUILD_VARS) \
-        BPF_CLANG="$(CLANG)" \
-        BPF_STRIP_FLAG="-strip=$(LLVM_STRIP)" \
-        BPF_CFLAGS="$(DUCK_CFLAGS)" \
-        BPF_TARGET="bpfel,bpfeb" \
-        BPF_TRACE_TARGET="$(GO_ARCH)" ; \
-        go generate ./control/control.go ; \
-        go generate ./trace/trace.go ; \
-        popd ; \
-    )
-    $(call GoPackage/Build/Compile)
+	( \
+		pushd $(PKG_BUILD_DIR) ; \
+		export \
+		$(GO_GENERAL_BUILD_CONFIG_VARS) \
+		$(GO_PKG_BUILD_CONFIG_VARS) \
+		$(GO_PKG_BUILD_VARS) \
+		BPF_CLANG="$(CLANG)" \
+		BPF_STRIP_FLAG="-strip=$(LLVM_STRIP)" \
+		BPF_CFLAGS="$(DUCK_CFLAGS)" \
+		BPF_TARGET="bpfel,bpfeb" \
+		BPF_TRACE_TARGET="$(GO_ARCH)" ; \
+		go generate ./control/control.go ; \
+		go generate ./trace/trace.go ; \
+		popd ; \
+	)
+	$(call GoPackage/Build/Compile)
 endef
 
 define Package/duck/install
-    $(call GoPackage/Package/Install/Bin,$(1))
+	$(call GoPackage/Package/Install/Bin,$(1))
 
-    $(INSTALL_DIR) $(1)/etc/duck/
-    $(INSTALL_CONF) $(PKG_BUILD_DIR)/example.dae $(1)/etc/duck/
+	$(INSTALL_DIR) $(1)/etc/duck/
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/example.dae $(1)/etc/duck/
 
-    $(INSTALL_DIR) $(1)/etc/config
-    $(INSTALL_CONF) $(CURDIR)/files/duck.config $(1)/etc/config/duck
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF) $(CURDIR)/files/duck.config $(1)/etc/config/duck
 
-    $(INSTALL_DIR) $(1)/etc/init.d
-    $(INSTALL_BIN) $(CURDIR)/files/duck.init $(1)/etc/init.d/duck
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) $(CURDIR)/files/duck.init $(1)/etc/init.d/duck
 endef
 
 define Package/duck-geoip/install
-    $(INSTALL_DIR) $(1)/usr/share/dae
-    $(LN) ../v2ray/geoip.dat $(1)/usr/share/dae/geoip.dat
+	$(INSTALL_DIR) $(1)/usr/share/dae
+	$(LN) ../v2ray/geoip.dat $(1)/usr/share/dae/geoip.dat
 endef
 
 define Package/duck-geosite/install
-    $(INSTALL_DIR) $(1)/usr/share/dae
-    $(LN) ../v2ray/geosite.dat $(1)/usr/share/dae/geosite.dat
+	$(INSTALL_DIR) $(1)/usr/share/dae
+	$(LN) ../v2ray/geosite.dat $(1)/usr/share/dae/geosite.dat
 endef
 
 $(eval $(call GoBinPackage,duck))

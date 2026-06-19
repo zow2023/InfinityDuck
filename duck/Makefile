@@ -10,7 +10,7 @@ PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://github.com/daeuniverse/dae.git
+PKG_SOURCE_URL:=https://github.com/olicesx/dae.git
 PKG_SOURCE_VERSION:=5a51cc747ef9e17185d438dc54ebf32c681984db
 PKG_MIRROR_HASH:=skip
 
@@ -50,7 +50,7 @@ define Package/duck/Default
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=Web Servers/Proxies
-  URL:=https://github.com/daeuniverse/dae
+  URL:=https://github.com/olicesx/dae
 endef
 
 define Package/duck

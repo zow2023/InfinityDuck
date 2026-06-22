@@ -17,13 +17,20 @@ jobs:
       - name: Update Makefile
         id: update_makefile
         run: |
-          latest_commit_info="$(curl -s https://api.github.com/repos/olicesx/dae/commits/kdae)"
+          latest_commit_info="$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/olicesx/dae/commits/kdae)"
+          
+          if ! echo "$latest_commit_info" | jq -e '.sha' >/dev/null 2>&1; then
+            echo "❌ 错误: 无法获取上游 Commit 信息。GitHub API 返回内容如下:"
+            echo "$latest_commit_info"
+            exit 1
+          fi
+
           latest_commit_full="$(echo "$latest_commit_info" | jq -r '.sha')"
           current_commit_full=$(grep 'PKG_SOURCE_VERSION:=' ./duck/Makefile | cut -d '=' -f 2)
 
           if [ "$current_commit_full" = "$latest_commit_full" ]; then
             echo "Upstream is already up-to-date ($current_commit_full)."
-            echo "updated=false" >> "$GITHUB_ENV"
+            echo "updated=false" >> "$GITHUB_OUTPUT"
           else
             latest_commit="$(echo $latest_commit_full | cut -b 1-7)"
             latest_core_date="$(echo "$latest_commit_info" \
@@ -37,20 +44,20 @@ jobs:
             sed -i "s/^PKG_BUILD_VERSION:=.*/PKG_BUILD_VERSION:=alpha-$latest_commit/" ./duck/Makefile
             sed -i "s/^PKG_SOURCE_DATE:=.*/PKG_SOURCE_DATE:=$latest_core_date/" ./duck/Makefile
 
-            echo "updated=true" >> "$GITHUB_ENV"
+            echo "updated=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Commit file
-        if: env.updated == 'true'
+        if: steps.update_makefile.outputs.updated == 'true'
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "YourName"
+          git config --global user.name "github-actions[bot]"
           git add ./duck/Makefile
           git commit -m "Update $(date +%Y/%m/%d\ %H:%M:%S\ %Z)"
         continue-on-error: true
 
       - name: Push changes
-        if: env.updated == 'true'
+        if: steps.update_makefile.outputs.updated == 'true'
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

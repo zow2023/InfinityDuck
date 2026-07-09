@@ -58,8 +58,10 @@ setup_cron_jobs() {
     local subscribe_auto_update subscribe_update_day_time subscribe_update_week_time
     local min
 
+    clear_cron_entries
+
     if [ -f /etc/crontabs/root ]; then
-        sed -E "/#${CRON_ID}/d;/#${AUTO_UPDATE_CRON_ID}/d" /etc/crontabs/root > "$tmp_cron" 2>/dev/null || : > "$tmp_cron"
+        cp -f /etc/crontabs/root "$tmp_cron" 2>/dev/null || : > "$tmp_cron"
     else
         : > "$tmp_cron"
     fi

@@ -40,15 +40,18 @@ ensure_runtime_dirs() {
     find "$BASE_DIR" -type f -exec chmod 640 {} + 2>/dev/null || true
 }
 
+_filter_duck_cron_to() {
+    local out_file="$1"
+    if [ -f /etc/crontabs/root ]; then
+        sed -E "/#${CRON_ID}/d;/#${AUTO_UPDATE_CRON_ID}/d" /etc/crontabs/root > "$out_file" 2>/dev/null || : > "$out_file"
+    else
+        : > "$out_file"
+    fi
+}
+
 clear_cron_entries() {
     local tmp_cron="/tmp/duck.root.cron"
-
-    if [ -f /etc/crontabs/root ]; then
-        sed -E "/#${CRON_ID}/d;/#${AUTO_UPDATE_CRON_ID}/d" /etc/crontabs/root > "$tmp_cron" 2>/dev/null || : > "$tmp_cron"
-    else
-        : > "$tmp_cron"
-    fi
-
+    _filter_duck_cron_to "$tmp_cron"
     mv -f "$tmp_cron" /etc/crontabs/root
 }
 
@@ -58,13 +61,7 @@ setup_cron_jobs() {
     local subscribe_auto_update subscribe_update_day_time subscribe_update_week_time
     local min
 
-    clear_cron_entries
-
-    if [ -f /etc/crontabs/root ]; then
-        cp -f /etc/crontabs/root "$tmp_cron" 2>/dev/null || : > "$tmp_cron"
-    else
-        : > "$tmp_cron"
-    fi
+    _filter_duck_cron_to "$tmp_cron"
 
     config_get_bool scheduled_restart "config" "scheduled_restart" "0"
     config_get cron_expression "config" "cron_expression" ""
@@ -84,8 +81,8 @@ setup_cron_jobs() {
 
     if [ "$subscribe_auto_update" -eq 1 ]; then
         min=$(( RANDOM % 60 ))
-        echo "$min ${subscribe_update_day_time:-*} * * ${subscribe_update_week_time:-*} /etc/init.d/duck hot_reload >/dev/null 2>&1 #${AUTO_UPDATE_CRON_ID}" >> "$tmp_cron"
-        log_message "Subscription auto-update enabled: minute=$min hour=${subscribe_update_day_time:-*} week=${subscribe_update_week_time:-*}"
+        echo "$min ${subscribe_update_day_time} * * ${subscribe_update_week_time} /etc/init.d/duck hot_reload >/dev/null 2>&1 #${AUTO_UPDATE_CRON_ID}" >> "$tmp_cron"
+        log_message "Subscription auto-update enabled: minute=$min hour=${subscribe_update_day_time} week=${subscribe_update_week_time}"
     else
         log_message "Subscription auto-update is disabled"
     fi
@@ -131,7 +128,11 @@ hijack_resolv_conf() {
 
     grep -q " ${resolv_path} " /proc/mounts && return 0
 
-    grep -E '^(search|domain) ' /tmp/resolv.conf > "$RESOLV_DAE" 2>/dev/null || : > "$RESOLV_DAE"
+    if [ -f /tmp/resolv.conf ]; then
+        grep -E '^(search|domain) ' /tmp/resolv.conf > "$RESOLV_DAE" 2>/dev/null || : > "$RESOLV_DAE"
+    else
+        : > "$RESOLV_DAE"
+    fi
 
     local dns_list LOGICAL_WAN
     . /lib/functions/network.sh

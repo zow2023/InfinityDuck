@@ -143,7 +143,7 @@ define Package/duck/install
 	$(call GoPackage/Package/Install/Bin,$(1))
 
 	$(INSTALL_DIR) $(1)/etc/duck/
-	$(INSTALL_CONF) $(PKG_BUILD_DIR)/example.dae $(1)/etc/duck/
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/example.dae $(1)/etc/duck/config.dae
 
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) $(CURDIR)/files/duck.config $(1)/etc/config/duck

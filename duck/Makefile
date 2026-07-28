@@ -22,7 +22,7 @@ PKG_BUILD_DEPENDS:=golang/host bpf-headers
 PKG_BUILD_PARALLEL:=1
 PKG_BUILD_FLAGS:=no-mips16
 
-GO_PKG:=github.com/olicesx/dae
+GO_PKG:=github.com/daeuniverse/dae
 GO_PKG_EXCLUDES:=control/kern/tests
 
 GO_PKG_LDFLAGS:= \
@@ -50,7 +50,7 @@ define Package/duck/Default
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=Web Servers/Proxies
-  URL:=https://github.com/olicesx/dae
+  URL:=https://github.com/daeuniverse/dae
 endef
 
 define Package/duck

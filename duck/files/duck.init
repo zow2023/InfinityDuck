@@ -153,6 +153,7 @@ cleanup_netns() {
     ip link del "$DAE_HOST_IFACE" 2>/dev/null || true
     ip link del "$DAE_PEER_IFACE" 2>/dev/null || true
     ip netns del "$DAENETNS_NAME" 2>/dev/null || true
+    umount "$DAENETNS" 2>/dev/null || true
     rm -f "$DAENETNS" 2>/dev/null || true
 }
 
@@ -409,7 +410,7 @@ reload_service() {
     start
 }
 
-stop_service() {
+service_stopped() {
     log_message "Stopping service"
     clear_cron_entries
     restore_resolv_conf

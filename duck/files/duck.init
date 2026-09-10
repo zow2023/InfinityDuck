@@ -165,7 +165,33 @@ is_mount_target() {
 is_bind_mounted_from() {
     local source="$1"
     local target="$2"
-    awk -v s="$source" -v t="$target" '$1 == s && $2 == t { found=1 } END { exit(found ? 0 : 1) }' /proc/mounts
+    local base
+    base="$(basename "$source")"
+    # /proc/self/mountinfo 第4列(root)是 bind 源文件相对其所在文件系统根的路径：
+    # /tmp 为 tmpfs 时 /tmp/resolv.conf.duck 显示为 /resolv.conf.duck，
+    # 在 overlay 根上则显示完整路径；两种形态都以 "/<basename>" 结尾。
+    # 注意：不能与第4列做绝对路径全等比较，也不能用 /proc/mounts 的 source 字段
+    # （tmpfs 上文件 bind mount 的 source 显示为文件系统名 "tmpfs"）。
+    # bind 源文件在挂载存续期间被删除时，内核会在 root 字段尾部追加
+    # "//deleted"（或 " (deleted)"，随内核而异），需剥离后再比较，
+    # 否则这类孤儿挂载会被误判为外来挂载而永远得不到清理。
+    awk -v t="$target" -v b="$base" '
+        $5 == t {
+            root = $4
+            sub(/\/\/deleted$/, "", root)
+            sub(/ \(deleted\)$/, "", root)
+            if (substr(root, length(root) - length(b)) == "/" b)
+                found = 1
+        }
+        END { exit(found ? 0 : 1) }' /proc/self/mountinfo
+}
+
+_resolv_target() {
+    local resolv_path="/etc/resolv.conf"
+
+    [ -L "$resolv_path" ] && resolv_path="$(readlink -f "$resolv_path" 2>/dev/null)"
+    [ -n "$resolv_path" ] || resolv_path="/tmp/resolv.conf"
+    printf '%s' "$resolv_path"
 }
 
 prepare_resolv_conf() {
@@ -189,7 +215,11 @@ prepare_resolv_conf() {
         dns_list="$(awk '/^nameserver/{print $2}' /tmp/resolv.conf.d/resolv.conf.auto)"
     fi
 
-    [ -n "$dns_list" ] || dns_list="119.29.29.29 223.5.5.5"
+    if [ -z "$dns_list" ]; then
+        log_message "No usable WAN DNS servers found, skip resolv.conf hijack" "warn"
+        rm -f "$RESOLV_DAE" 2>/dev/null || true
+        return 1
+    fi
 
     for dns in $dns_list; do
         echo "nameserver $dns" >> "$RESOLV_DAE"
@@ -199,10 +229,13 @@ prepare_resolv_conf() {
 }
 
 hijack_resolv_conf() {
-    local resolv_path="/tmp/resolv.conf"
+    local resolv_path
+    resolv_path="$(_resolv_target)"
 
-    [ -L "$resolv_path" ] && resolv_path="$(readlink -f "$resolv_path" 2>/dev/null)"
-    [ -n "$resolv_path" ] || resolv_path="/tmp/resolv.conf"
+    if [ ! -f "$resolv_path" ]; then
+        log_message "$resolv_path does not exist, skip hijack" "warn"
+        return 1
+    fi
 
     if is_bind_mounted_from "$RESOLV_DAE" "$resolv_path"; then
         return 0
@@ -227,28 +260,48 @@ hijack_resolv_conf() {
 
     mount -o remount,bind,ro "$RESOLV_DAE" "$resolv_path" 2>/dev/null || {
         log_message "Failed to remount resolv.conf read-only, rolling back" "warn"
-        umount "$resolv_path" 2>/dev/null || true
+        # 回滚时仅在 umount 成功后才删源文件，
+        # 避免“文件已删、挂载仍在”的孤儿状态
+        if ! umount "$resolv_path" 2>/dev/null; then
+            log_message "Rollback umount failed, keeping $RESOLV_DAE to avoid orphan mount" "warn"
+            return 1
+        fi
         rm -f "$RESOLV_DAE"
         return 1
     }
 
-    log_message "resolv.conf hijacked successfully"
+    log_message "resolv.conf hijacked successfully ($resolv_path)"
     return 0
 }
 
 restore_resolv_conf() {
-    local resolv_path="/tmp/resolv.conf"
-
-    [ -L "$resolv_path" ] && resolv_path="$(readlink -f "$resolv_path" 2>/dev/null)"
-    [ -n "$resolv_path" ] || resolv_path="/tmp/resolv.conf"
+    local resolv_path i
+    resolv_path="$(_resolv_target)"
 
     if ! is_bind_mounted_from "$RESOLV_DAE" "$resolv_path"; then
+        if is_mount_target "$resolv_path"; then
+            # 挂载存在但不是我们的 bind（例如其他服务也挂了 resolv.conf）：
+            # 不属于本服务的挂载一律不碰，避免误卸其他组件（如 AdGuard Home）的挂载
+            log_message "Foreign mount on $resolv_path detected, leaving it untouched" "warn"
+            return 0
+        fi
         rm -f "$RESOLV_DAE" 2>/dev/null || true
         return 0
     fi
 
     mount -o remount,bind,rw "$RESOLV_DAE" "$resolv_path" 2>/dev/null || true
-    umount "$resolv_path" 2>/dev/null || true
+
+    for i in 1 2 3; do
+        umount "$resolv_path" 2>/dev/null || true
+        is_mount_target "$resolv_path" || break
+        sleep 1
+    done
+
+    if is_mount_target "$resolv_path"; then
+        log_message "Failed to unmount $resolv_path, system DNS may remain hijacked" "error"
+        return 1
+    fi
+
     rm -f "$RESOLV_DAE" 2>/dev/null || true
 
     log_message "resolv.conf restored"

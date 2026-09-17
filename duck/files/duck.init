@@ -312,7 +312,7 @@ validate_config_file() {
 
     [ -n "$config_file" ] || return 1
     [ -f "$config_file" ] || return 1
-    "$PROG" validate -c "$config_file" >/dev/null 2>&1
+    DAE_LOCATION_ASSET="/usr/share/dae" "$PROG" validate -c "$config_file" >/dev/null 2>&1
 }
 
 fetch_remote_config() {
@@ -340,7 +340,7 @@ fetch_remote_config() {
 
     chmod 600 "$tmp_conf" 2>/dev/null || true
 
-    if ! "$PROG" validate -c "$tmp_conf" >/dev/null 2>&1; then
+    if ! DAE_LOCATION_ASSET="/usr/share/dae" "$PROG" validate -c "$tmp_conf" >/dev/null 2>&1; then
         log_message "Downloaded configuration is invalid, keeping current one" "warn"
         rm -f "$tmp_conf"
         return 1

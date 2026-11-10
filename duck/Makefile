@@ -44,7 +44,7 @@ GO_PKG_BUILD_VARS+= \
 
 GO_PKG_TARGET_VARS+= \
 	CGO_LDFLAGS="$(TARGET_LDFLAGS) -static -Wl,-s" \
-	GOEXPERIMENT=newinliner,simd
+	GOEXPERIMENT=newinliner,simd,heapminimum512kib,randomizedheapbase64
 
 define Package/duck/Default
   SECTION:=net

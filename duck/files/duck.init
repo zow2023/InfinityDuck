@@ -426,6 +426,7 @@ start_service() {
     fi
 
     fetch_remote_config "$config_file" "$subscribe_url" "$subscribe_enabled" || true
+    chmod 600 "$config_file" 2>/dev/null || true
 
     if ! validate_config_file "$config_file"; then
         log_message "Invalid configuration file: $config_file" "error"

@@ -53,10 +53,11 @@ jobs:
 
           current_commit_full="$(grep '^PKG_SOURCE_VERSION:=' ./duck/Makefile | cut -d '=' -f 2)"
           current_pkg_version="$(grep '^PKG_VERSION:=' ./duck/Makefile | cut -d '=' -f 2)"
+          pkg_version="${latest_release_tag#v}"
 
           # 判断是否需要更新
           if [ "$current_commit_full" = "$latest_commit_full" ] && \
-             [ "$current_pkg_version" = "$latest_release_tag" ]; then
+             [ "$current_pkg_version" = "$pkg_version" ]; then
             echo "Upstream is already up-to-date ($latest_release_tag)."
             echo "updated=false" >> "$GITHUB_ENV"
           else

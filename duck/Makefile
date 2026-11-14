@@ -10,7 +10,7 @@ PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://github.com/olicesx/dae.git
+PKG_SOURCE_URL:=https://github.com/daeuniverse/dae.git
 PKG_SOURCE_VERSION:=e52e96f132896e9ef6683b354a47231e354361a2
 PKG_MIRROR_HASH:=skip
 

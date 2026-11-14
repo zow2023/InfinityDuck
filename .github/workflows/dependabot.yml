@@ -64,7 +64,8 @@ jobs:
             echo "对应 Commit: $latest_commit_full"
 
             sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" ./duck/Makefile
-            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$latest_release_tag/" ./duck/Makefile
+            pkg_version="${latest_release_tag#v}"
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$pkg_version/" ./duck/Makefile
             sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$latest_commit_full/" ./duck/Makefile
             sed -i "s/^PKG_BUILD_VERSION:=.*/PKG_BUILD_VERSION:=release-$latest_commit/" ./duck/Makefile
             sed -i "s/^PKG_SOURCE_DATE:=.*/PKG_SOURCE_DATE:=$latest_core_date/" ./duck/Makefile
